@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 RUN apt update && \
-    apt install -y nano wget openssh-client openssh-server openmpi-bin openmpi-common libopenmpi-dev sudo iputils-ping && \
+    apt install -y nano wget openssh-client openssh-server openmpi-bin openmpi-common libopenmpi-dev sudo iputils-ping g++ && \
     useradd -ms /bin/bash mpiuser && \
     echo "mpiuser:mpiuser" | chpasswd && \
     adduser mpiuser sudo && \

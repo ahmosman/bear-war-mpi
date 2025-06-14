@@ -75,11 +75,14 @@ node3
 node4
 ```
 
-Then run with:
+Then run with (np is the total number of processes across all nodes):
 
 ```bash
 mpirun -hostfile hosts -np 4 myprogram
 ```
+
+### Be careful
+When running MPI programs on multiple nodes, ensure that every node can ssh into every other node without a password prompt. Fingerprints should be accepted. 
 
 ## Why Run From /app/shared?
 
