@@ -51,11 +51,10 @@ Install Docker by following the instructions on the [Docker website](https://doc
 
 ### Compiling Programs
 
-To compile a program, use the `mpicc` command. For example:
+To compile a program, use the `mpi++` command. For example:
 
 ```bash
-cd /app/shared
-mpicc myprogram.c -o myprogram
+mpic++ main_1.cpp -o bear_war
 ```
 
 ### Running Programs
@@ -63,7 +62,7 @@ mpicc myprogram.c -o myprogram
 To run an MPI program:
 
 ```bash
-mpirun -np 4 myprogram
+mpirun -np 4 bear_war
 ```
 
 To run across multiple nodes, create a hostfile (e.g., `hosts`) in the `/app/shared` directory:
@@ -78,7 +77,7 @@ node4
 Then run with (np is the total number of processes across all nodes):
 
 ```bash
-mpirun -hostfile hosts -np 4 myprogram
+mpirun -hostfile hosts -np 4 bear_war
 ```
 
 ### Be careful
