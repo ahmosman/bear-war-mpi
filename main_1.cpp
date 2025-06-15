@@ -58,8 +58,8 @@ struct Message
 
 int lamport_clock = 0;
 int N, pid;
-const int K = 2; // liczba doków
-const int M = 5; // liczba mechaników
+const int K = 4; // liczba doków
+const int M = 20; // liczba mechaników
 int Z = 0;       // liczba potrzebnych mechaników
 
 // Stany procesu
@@ -86,12 +86,18 @@ vector<int> pending_mechanics_replies;
 
 void print_color(const string &message)
 {
-    const char *colors[] = {
-        "\x1B[31m", "\x1B[32m", "\x1B[33m", "\x1B[34m",
-        "\x1B[35m", "\x1B[36m", "\x1B[37m"};
-    const char *color = colors[pid % 7];
-    cout << color << "[" << pid << "] [" << lamport_clock << "] "
-         << message << "\033[0m" << endl;
+    // Generowanie kolorów w oparciu o PID
+    int r = 100 + (pid * 37) % 156; // Czerwony (zakres 100-255)
+    int g = 100 + (pid * 53) % 156; // Zielony (zakres 100-255)
+    int b = 100 + (pid * 67) % 156; // Niebieski (zakres 100-255)
+
+    // Formatowanie koloru w ANSI
+    char color_code[20];
+    snprintf(color_code, sizeof(color_code), "\x1B[38;2;%d;%d;%dm", r, g, b);
+
+    // Wypisanie wiadomości w kolorze
+    cout << color_code << "[" << pid << "] [" << lamport_clock << "] "
+         << message << "\033[0m" << endl; // \033[0m resetuje kolor
 }
 
 void update_clock(int received_timestamp)
@@ -128,6 +134,7 @@ bool can_enter_dock()
         temp_queue.pop();
     }
 
+    // Sortowanie żądań według timestampów Lamporta i PID
     sort(requests.begin(), requests.end(), [](const Request &a, const Request &b)
          {
         if (a.timestamp != b.timestamp) return a.timestamp < b.timestamp;
@@ -144,7 +151,7 @@ bool can_enter_dock()
     return false;
 }
 
-// Sprawdza czy proces może wejść do sekcji mechaników
+// Sprawdza czy proces może wejść do sekcji mechaników 
 bool can_enter_mechanics()
 {
     vector<Request> requests;
@@ -156,6 +163,7 @@ bool can_enter_mechanics()
         temp_queue.pop();
     }
 
+    // Sortowanie żądań według znacznika czasu Lamporta i PID
     sort(requests.begin(), requests.end(), [](const Request &a, const Request &b)
          {
         if (a.timestamp != b.timestamp) return a.timestamp < b.timestamp;
@@ -194,7 +202,7 @@ void handle_request_dock(const Message &msg)
     }
     else
     {
-        pending_dock_replies.push_back(msg.pid);
+        pending_dock_replies.push_back(msg.pid); // odłóż REPLY bo konkurujemy o dok
     }
 }
 
@@ -215,7 +223,7 @@ void handle_request_mechanics(const Message &msg)
     }
     else
     {
-        pending_mechanics_replies.push_back(msg.pid);
+        pending_mechanics_replies.push_back(msg.pid); // odłóż REPLY bo konkurujemy o mechaników
     }
 }
 
@@ -362,7 +370,7 @@ int main(int argc, char **argv)
             { // 20% szansy na powrót z wojny
                 Z = 1 + rand() % M;
                 print_color("Powrot z wojny, potrzebuje " + to_string(Z) + " mechanikow");
-                request_dock(); // Najpierw tylko dok
+                request_dock(); // żądaj doku
                 made_progress = true;
             }
         }
@@ -372,7 +380,7 @@ int main(int argc, char **argv)
         {
             in_dock = true;
             print_color("Zadokowano!");
-            request_mechanics(); // TERAZ żądaj mechaników
+            request_mechanics(); // żądaj mechaników
             made_progress = true;
         }
 
@@ -384,7 +392,7 @@ int main(int argc, char **argv)
             print_color("Rozpoczynam naprawe z " + to_string(Z) + " mechanikami");
 
             // Symulacja naprawy
-            // usleep(100000 + rand() % 200000); // 0.1-0.3 sekundy
+            usleep((500000 + rand() % 1000001)); // sleep pomiędzy 0.5s i 1.5s
 
             print_color("Naprawa zakonczona");
             release_resources();
@@ -449,7 +457,7 @@ int main(int argc, char **argv)
             iterations_without_progress = 0;
         }
 
-        // Krótka przerwa aby uniknąć busy waiting
+        // Krótki sleep - unikanie aktywnego oczekiwania
         usleep(1000); // 1ms
     }
 
