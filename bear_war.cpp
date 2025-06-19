@@ -1,3 +1,19 @@
+/*
+Wojna z misiami
+
+W odległej przyszłości wybucha wojna federacji terrańskiej z puchatymi misiami, których
+słitaśny wygląd kompletnie nie pasuje do ich mrocznej i sadystycznej natury. Wojna ma
+charakter podjazdowy, federacja wysyła pojedyncze okręty do walki, po których wracają
+zniszczone w różnym stopniu.
+
+Okręty ubiegają się o jeden z nierozróżnialnych doków i Z nierozróżnialnych mechaników,
+gdzie Z ustalane jest losowo (to zniszczenia po bitwie)
+Procesy: N okretów
+Zasoby: K doków, M mechaników
+
+Procesy działają z różną prędkością, mogą wręcz przez jakiś czas odpoczywać. Nie powinno to blokować pracy innych procesów.
+*/
+
 #include <mpi.h>
 #include <pthread.h>
 #include <iostream>
@@ -14,7 +30,7 @@ using namespace std;
 // Stałe
 #define TRUE 1
 #define FALSE 0
-#define MAX_ITERATIONS 100
+#define DEBUG 0 // Ustaw na 1, aby włączyć debugowanie
 
 // Typy wiadomości
 #define REQUEST_DOCK 1
@@ -55,9 +71,6 @@ pthread_cond_t resourceCond = PTHREAD_COND_INITIALIZER;
 // Liczniki ACK
 int dock_ack_count = 0;
 int mechanics_ack_count = 0;
-
-// Zmienne do detekcji deadlock'a
-int iterations_without_progress = 0;
 
 // Struktura żądania
 struct Request
@@ -271,7 +284,8 @@ void *startKomWatek(void *ptr)
         {
         case REQUEST_DOCK:
         {
-            print_color("Otrzymałem żądanie doku od okrętu " + to_string(pakiet.src));
+            if (DEBUG)
+                print_color("Otrzymałem żądanie doku od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
 
             // Dodaj żądanie do kolejki
             pthread_mutex_lock(&queueMut);
@@ -287,7 +301,8 @@ void *startKomWatek(void *ptr)
 
         case REPLY_DOCK:
         {
-            print_color("Otrzymałem zgodę na dok od okrętu " + to_string(pakiet.src));
+            if (DEBUG)
+                print_color("Otrzymałem zgodę na dok od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
             pthread_mutex_lock(&stateMut);
             dock_ack_count++;
             pthread_mutex_unlock(&stateMut);
@@ -297,7 +312,8 @@ void *startKomWatek(void *ptr)
 
         case RELEASE_DOCK:
         {
-            print_color("Okręt " + to_string(pakiet.src) + " zwolnił dok");
+            if (DEBUG)
+                print_color("Otrzymałem zwolnienie doku od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
 
             // Usuń żądanie z kolejki
             pthread_mutex_lock(&queueMut);
@@ -320,8 +336,9 @@ void *startKomWatek(void *ptr)
 
         case REQUEST_MECHANICS:
         {
-            print_color("Otrzymałem żądanie " + to_string(pakiet.mechanics_needed) +
-                        " mechaników od okrętu " + to_string(pakiet.src));
+            if (DEBUG)
+                print_color("Otrzymałem żądanie " + to_string(pakiet.mechanics_needed) +
+                        " mechaników od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
 
             // Dodaj żądanie do kolejki
             pthread_mutex_lock(&queueMut);
@@ -336,7 +353,8 @@ void *startKomWatek(void *ptr)
         }
 
         case REPLY_MECHANICS:
-            print_color("Otrzymałem zgodę na mechaników od okrętu " + to_string(pakiet.src));
+            if (DEBUG)
+                print_color("Otrzymałem zgodę na mechaników od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
             pthread_mutex_lock(&stateMut);
             mechanics_ack_count++;
             pthread_mutex_unlock(&stateMut);
@@ -345,8 +363,8 @@ void *startKomWatek(void *ptr)
 
         case RELEASE_MECHANICS:
         {
-            print_color("Okręt " + to_string(pakiet.src) + " zwolnił " +
-                        to_string(pakiet.mechanics_needed) + " mechaników");
+            if (DEBUG)
+                print_color("Otrzymałem zwolnienie mechaników od okrętu " + to_string(pakiet.src) + " z timestampem " + to_string(pakiet.timestamp));
 
             // Usuń żądanie z kolejki
             pthread_mutex_lock(&queueMut);
@@ -379,7 +397,6 @@ void mainLoop()
 
     while (stan != InFinish)
     {
-        bool made_progress = false;
 
         switch (stan)
         {
@@ -389,11 +406,9 @@ void mainLoop()
             int perc = rand() % 100;
             if (perc < 20)
             {
-                print_color("Wracam z bitwy uszkodzony! Potrzebuję naprawy.");
-
                 // Losowanie liczby potrzebnych mechaników (1-M)
                 needed_mechanics = 1 + rand() % M_mechanics;
-                print_color("Potrzebuję " + to_string(needed_mechanics) + " mechaników do naprawy.");
+                print_color("Powrot z wojny, potrzebuje " + to_string(needed_mechanics) + " mechanikow");
 
                 // Żądanie doku
                 increment_lamport_clock();
@@ -420,9 +435,8 @@ void mainLoop()
                     }
                 }
 
-                print_color("Wysłałem żądanie doku do wszystkich okrętów.");
+                print_color("Zadam doku");
                 changeState(InWantDock);
-                made_progress = true;
             }
 
             // Czekaj na sygnał zamiast sleep
@@ -442,7 +456,9 @@ void mainLoop()
             pthread_mutex_lock(&stateMut);
             while (stan == InWantDock && (dock_ack_count < ships - 1 || !can_enter_dock()))
             {
-                print_color("Czekam na dostęp do doku... (ACK: " + to_string(dock_ack_count) + "/" + to_string(ships - 1) + ")");
+                if (DEBUG)
+                    print_color("Czekam na dostęp do doku... (ACK: " + to_string(dock_ack_count) + "/" + to_string(ships - 1) + ")");
+                
                 pthread_cond_wait(&resourceCond, &stateMut);
             }
             if (stan == InWantDock)
@@ -454,7 +470,7 @@ void mainLoop()
 
             if (got_dock)
             {
-                print_color("Otrzymałem dostęp do doku! Teraz żądam mechaników.");
+                print_color("Zadokowano!");
 
                 // Żądanie mechaników 
                 increment_lamport_clock();
@@ -476,8 +492,8 @@ void mainLoop()
                     }
                 }
 
+                print_color("Zadam " + to_string(needed_mechanics) + " mechanikow");
                 changeState(InWantMechanics); 
-                made_progress = true;
             }
             break;
         }
@@ -491,7 +507,9 @@ void mainLoop()
             // Pętla oczekująca na dostęp do mechaników i zgody od innych
             while (stan == InWantMechanics && (mechanics_ack_count < ships - 1 || !can_enter_mechanics()))
             {
-                print_color("Czekam na dostęp do mechaników... (ACK: " + to_string(mechanics_ack_count) + "/" + to_string(ships - 1) + ")");
+                if (DEBUG)
+                    print_color("Czekam na dostęp do mechaników... (ACK: " + to_string(mechanics_ack_count) + "/" + to_string(ships - 1) + ")");
+                
                 pthread_cond_wait(&resourceCond, &stateMut);
             }
 
@@ -506,21 +524,20 @@ void mainLoop()
             // Działania wykonywane po zwolnieniu mutexu
             if (got_mechanics)
             {
-                print_color("Rozpoczynam naprawę z " + to_string(needed_mechanics) + " mechanikami w doku!");
+                print_color("Rozpoczynam naprawe z " + to_string(needed_mechanics) + " mechanikami");
 
                 changeState(InRepair);
-                made_progress = true;
             }
             break;
         }
 
         case InRepair:
         {
-            print_color("Naprawiam okręt... (może potrwać 3-7 sekund)");
-            int repair_time = 3 + rand() % 5; // 3-7 sekund
-            //sleep(repair_time);
+            print_color("Naprawiam okręt... (może potrwać 2-7 sekund)");
+            int repair_time = 3 + rand() % 5; // 2-7 sekund
+            sleep(repair_time);
 
-            print_color("Naprawa zakończona! Zwalniam zasoby.");
+            print_color("Naprawa zakonczona");
 
             // Zwolnienie mechaników
             increment_lamport_clock();
@@ -541,6 +558,8 @@ void mainLoop()
                     sendPacket(my_dock_request_timestamp, 0, i, RELEASE_DOCK);
                 }
             }
+
+            print_color("Zwalniam dok i " + to_string(needed_mechanics) + " mechanikow");
 
             // Usuń własne żądania z kolejek
             pthread_mutex_lock(&queueMut);
@@ -573,7 +592,6 @@ void mainLoop()
 
             print_color("Wracam do normalnej służby. Zasoby zwolnione.");
             changeState(InRun);
-            made_progress = true;
             break;
         }
 
@@ -581,30 +599,6 @@ void mainLoop()
             break;
         }
 
-        // Detektor deadlock'a
-        if (!made_progress)
-        {
-            iterations_without_progress++;
-            if (iterations_without_progress > MAX_ITERATIONS)
-            {
-                print_color("DEADLOCK DETECTED - brak postępu przez " + to_string(MAX_ITERATIONS) + " iteracji");
-
-                // Debug info
-                if (stan == InWantDock)
-                {
-                    print_color("DEBUG: Czekam na dok - otrzymano " + to_string(dock_ack_count) + "/" + to_string(ships - 1) + " odpowiedzi");
-                }
-                if (stan == InWantMechanics)
-                {
-                    print_color("DEBUG: Czekam na mechaników - otrzymano " + to_string(mechanics_ack_count) + "/" + to_string(ships - 1) + " odpowiedzi");
-                }
-                break;
-            }
-        }
-        else
-        {
-            iterations_without_progress = 0;
-        }
     }
 }
 

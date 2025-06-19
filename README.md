@@ -54,7 +54,7 @@ Install Docker by following the instructions on the [Docker website](https://doc
 To compile a program, use the `mpi++` command. For example:
 
 ```bash
-mpic++ main_1.cpp -o bear_war
+mpic++ bear_war.cpp -o bear_war
 ```
 
 ### Running Programs
@@ -62,8 +62,10 @@ mpic++ main_1.cpp -o bear_war
 To run an MPI program:
 
 ```bash
-mpirun -np 4 bear_war
+mpirun -np <N_ships> bear_war <K_docks> <M_mechanics>
 ```
+
+Where  `<N_ships>` is the number of ships (processes), `<K_docks>` is the number of docks, and `<M_mechanics>` is the number of mechanics.
 
 To run across multiple nodes, create a hostfile (e.g., `hosts`) in the `/app/shared` directory:
 
@@ -77,8 +79,9 @@ node4
 Then run with (np is the total number of processes across all nodes):
 
 ```bash
-mpirun -hostfile hosts -np 4 bear_war
+mpirun -hostfile hosts -np <N_ships> bear_war <K_docks> <M_mechanics>
 ```
+Where  `<N_ships>` is the number of ships (processes), `<K_docks>` is the number of docks, and `<M_mechanics>` is the number of mechanics.
 
 ### Be careful
 When running MPI programs on multiple nodes, ensure that every node can ssh into every other node without a password prompt. Fingerprints should be accepted. 
