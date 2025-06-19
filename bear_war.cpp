@@ -538,7 +538,7 @@ void mainLoop()
             sleep(repair_time);
 
             print_color("Naprawa zakonczona");
-
+            print_color("Zwalniam dok i " + to_string(needed_mechanics) + " mechanikow");
             // Zwolnienie mechaników
             increment_lamport_clock();
             for (int i = 0; i < ships; i++)
@@ -559,7 +559,6 @@ void mainLoop()
                 }
             }
 
-            print_color("Zwalniam dok i " + to_string(needed_mechanics) + " mechanikow");
 
             // Usuń własne żądania z kolejek
             pthread_mutex_lock(&queueMut);
