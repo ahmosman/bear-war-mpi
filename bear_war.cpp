@@ -192,7 +192,7 @@ bool can_enter_dock()
         return a.process_id < b.process_id; });
 
     bool can_enter = false;
-    int my_timestamp = get_lamport_clock();
+   
 
     for (int i = 0; i < min(K_docks, (int)requests.size()); i++)
     {
@@ -288,7 +288,9 @@ void *startKomWatek(void *ptr)
         case REPLY_DOCK:
         {
             print_color("Otrzymałem zgodę na dok od okrętu " + to_string(pakiet.src));
+            pthread_mutex_lock(&stateMut);
             dock_ack_count++;
+            pthread_mutex_unlock(&stateMut);
             pthread_cond_broadcast(&resourceCond);
             break;
         }
@@ -334,12 +336,12 @@ void *startKomWatek(void *ptr)
         }
 
         case REPLY_MECHANICS:
-        {
             print_color("Otrzymałem zgodę na mechaników od okrętu " + to_string(pakiet.src));
+            pthread_mutex_lock(&stateMut);
             mechanics_ack_count++;
+            pthread_mutex_unlock(&stateMut);
             pthread_cond_broadcast(&resourceCond);
             break;
-        }
 
         case RELEASE_MECHANICS:
         {
@@ -407,7 +409,9 @@ void mainLoop()
                 pthread_mutex_unlock(&queueMut);
 
                 // Wyślij żądanie doku do wszystkich
+                pthread_mutex_lock(&stateMut); // ZABLOKUJ MUTEX
                 dock_ack_count = 0;
+                pthread_mutex_unlock(&stateMut);
                 for (int i = 0; i < ships; i++)
                 {
                     if (i != pid)
@@ -430,37 +434,40 @@ void mainLoop()
             pthread_cond_timedwait(&resourceCond, &stateMut, &timeout);
             pthread_mutex_unlock(&stateMut);
             break;
-            break;
         }
 
         case InWantDock:
-        {
+        { 
+            bool got_dock = false;
             pthread_mutex_lock(&stateMut);
             while (stan == InWantDock && (dock_ack_count < ships - 1 || !can_enter_dock()))
             {
                 print_color("Czekam na dostęp do doku... (ACK: " + to_string(dock_ack_count) + "/" + to_string(ships - 1) + ")");
                 pthread_cond_wait(&resourceCond, &stateMut);
             }
-
             if (stan == InWantDock)
+            { // Sprawdzamy, czy warunek został spełniony
+                got_dock = true;
+                mechanics_ack_count = 0; 
+            }
+            pthread_mutex_unlock(&stateMut); 
+
+            if (got_dock)
             {
                 print_color("Otrzymałem dostęp do doku! Teraz żądam mechaników.");
 
-                // Żądanie mechaników
+                // Żądanie mechaników 
                 increment_lamport_clock();
                 int my_timestamp = get_lamport_clock();
-
-                // przypisanie aby porównać z zegarem requesta (był problem gdy między requestami zegar się zmienia)
+                // przypisanie aby porównać z zegarem requesta
                 my_mechanics_request_timestamp = my_timestamp;
 
-                // Dodaj własne żądanie do kolejki mechaników
                 pthread_mutex_lock(&queueMut);
                 Request mech_req = {my_timestamp, pid, needed_mechanics};
                 mechanics_queue.push(mech_req);
                 pthread_mutex_unlock(&queueMut);
 
-                // Wyślij żądanie mechaników do wszystkich
-                mechanics_ack_count = 0;
+                 // Wyślij żądanie mechaników do wszystkich
                 for (int i = 0; i < ships; i++)
                 {
                     if (i != pid)
@@ -469,29 +476,41 @@ void mainLoop()
                     }
                 }
 
-                changeState(InWantMechanics);
+                changeState(InWantMechanics); 
                 made_progress = true;
             }
-            pthread_mutex_unlock(&stateMut);
             break;
         }
 
         case InWantMechanics:
         {
+            bool got_mechanics = false; 
+
+         
             pthread_mutex_lock(&stateMut);
+            // Pętla oczekująca na dostęp do mechaników i zgody od innych
             while (stan == InWantMechanics && (mechanics_ack_count < ships - 1 || !can_enter_mechanics()))
             {
                 print_color("Czekam na dostęp do mechaników... (ACK: " + to_string(mechanics_ack_count) + "/" + to_string(ships - 1) + ")");
                 pthread_cond_wait(&resourceCond, &stateMut);
             }
 
+           
             if (stan == InWantMechanics)
             {
+                got_mechanics = true;
+            }
+
+            pthread_mutex_unlock(&stateMut);
+         
+            // Działania wykonywane po zwolnieniu mutexu
+            if (got_mechanics)
+            {
                 print_color("Rozpoczynam naprawę z " + to_string(needed_mechanics) + " mechanikami w doku!");
+
                 changeState(InRepair);
                 made_progress = true;
             }
-            pthread_mutex_unlock(&stateMut);
             break;
         }
 
@@ -499,7 +518,7 @@ void mainLoop()
         {
             print_color("Naprawiam okręt... (może potrwać 3-7 sekund)");
             int repair_time = 3 + rand() % 5; // 3-7 sekund
-            // sleep(repair_time);
+            //sleep(repair_time);
 
             print_color("Naprawa zakończona! Zwalniam zasoby.");
 
@@ -509,7 +528,7 @@ void mainLoop()
             {
                 if (i != pid)
                 {
-                    sendPacket(get_lamport_clock(), needed_mechanics, i, RELEASE_MECHANICS);
+                    sendPacket(my_mechanics_request_timestamp, needed_mechanics, i, RELEASE_MECHANICS);
                 }
             }
 
@@ -519,7 +538,7 @@ void mainLoop()
             {
                 if (i != pid)
                 {
-                    sendPacket(get_lamport_clock(), 0, i, RELEASE_DOCK);
+                    sendPacket(my_dock_request_timestamp, 0, i, RELEASE_DOCK);
                 }
             }
 
