@@ -96,3 +96,7 @@ The `/app/shared` directory is a volume mounted from the host to all containers.
 4. **Execution:** Compiled binaries are accessible to all nodes
 
 This setup facilitates distributed computing where all nodes need access to the same resources.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
